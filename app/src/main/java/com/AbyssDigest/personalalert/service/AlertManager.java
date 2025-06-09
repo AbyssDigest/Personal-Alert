@@ -1,17 +1,15 @@
 package com.AbyssDigest.personalalert.service;
 
 import android.content.Context;
+import android.content.res.AssetFileDescriptor;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraManager;
-import android.media.AudioAttributes;
-import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
-
 import java.io.IOException;
 
 public class AlertManager {
@@ -19,7 +17,6 @@ public class AlertManager {
     private Context context;
     private CameraManager cameraManager;
     private String cameraId;
-    private MediaPlayer mediaPlayer;
 
     public AlertManager(Context context) {
         this.context = context;
@@ -31,11 +28,9 @@ public class AlertManager {
         }
     }
 
-    public void triggerAlert(String soundUri, boolean flashlight) {
-        if (soundUri != null && !soundUri.isEmpty()) {
-            playSound(Uri.parse(soundUri));
-        } else {
-            playSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+    public void triggerAlert(String sound, boolean flashlight) {
+        if (sound != null && !sound.isEmpty()) {
+            playSound(sound);
         }
 
         if (flashlight) {
@@ -43,38 +38,30 @@ public class AlertManager {
         }
     }
 
-    private void playSound(Uri soundUri) {
+    private void playSound(String soundIdentifier) {
+        MediaPlayer mediaPlayer = new MediaPlayer();
+        mediaPlayer.setOnCompletionListener(mp -> {
+            mp.release();
+        });
 
         try {
-//            Uri notification = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            Ringtone r = RingtoneManager.getRingtone(this.context, soundUri);
-            r.play();
-        } catch (Exception e) {
+            if (soundIdentifier.startsWith("content://")) {
+                // It's a ringtone
+                Uri soundUri = Uri.parse(soundIdentifier);
+                mediaPlayer.setDataSource(context, soundUri);
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            } else {
+                // It's an asset
+                AssetFileDescriptor afd = context.getAssets().openFd("sounds/" + soundIdentifier);
+                mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            }
+        } catch (IOException e) {
             e.printStackTrace();
+            mediaPlayer.release();
         }
-
-//        if (mediaPlayer != null) {
-//            mediaPlayer.release();
-//        }
-//        mediaPlayer = new MediaPlayer();
-//        mediaPlayer.setAudioAttributes(
-//                new AudioAttributes.Builder()
-//                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-//                        .setUsage(AudioAttributes.USAGE_MEDIA)
-//                        .build()
-//        );
-//        mediaPlayer.setOnCompletionListener(mp -> {
-//            mp.release();
-//            mediaPlayer = null;
-//        });
-//        try {
-//            mediaPlayer.setDataSource(this.context , soundUri);
-//            mediaPlayer.prepare();
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-//
-//        mediaPlayer.start();
     }
 
     private void strobeFlashlight(int count, int delay) {
@@ -88,5 +75,9 @@ public class AlertManager {
                 }
             }
         }).start();
+    }
+
+    public void release() {
+        // No longer needed as MediaPlayer is released on completion
     }
 }

@@ -1,20 +1,24 @@
 package com.AbyssDigest.personalalert;
 
 import android.content.Intent;
+import android.content.res.AssetFileDescriptor;
+import android.media.MediaPlayer;
+import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.media.Ringtone;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.TextView;
-
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-
 import com.AbyssDigest.personalalert.database.Alert;
 import com.AbyssDigest.personalalert.database.AppDatabase;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AddEditAlertActivity extends AppCompatActivity {
 
@@ -27,7 +31,10 @@ public class AddEditAlertActivity extends AppCompatActivity {
 
     private AppDatabase db;
     private Alert alert;
-    private Uri selectedSoundUri;
+    private String selectedSound;
+    private MediaPlayer mediaPlayer;
+
+    private static final int RINGTONE_PICKER_REQUEST_CODE = 999;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -43,11 +50,7 @@ public class AddEditAlertActivity extends AppCompatActivity {
         soundTextView = findViewById(R.id.soundTextView);
         saveButton = findViewById(R.id.saveButton);
 
-        soundButton.setOnClickListener(v -> {
-            Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
-            intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL);
-            startActivityForResult(intent, 999);
-        });
+        soundButton.setOnClickListener(v -> showSoundSourceDialog());
 
         saveButton.setOnClickListener(v -> saveAlert());
         int alertId = getIntent().getIntExtra("alert_id", -1);
@@ -56,22 +59,107 @@ public class AddEditAlertActivity extends AppCompatActivity {
         }
     }
 
+    private void showSoundSourceDialog() {
+        final CharSequence[] options = {"App Sounds", "System Ringtones"};
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Select Sound Source");
+        builder.setItems(options, (dialog, which) -> {
+            if (which == 0) {
+                showAssetSoundSelectionDialog();
+            } else {
+                showRingtonePicker();
+            }
+        });
+        builder.show();
+    }
+
+    private void showAssetSoundSelectionDialog() {
+        List<String> soundList = getSoundsFromAssets();
+        final CharSequence[] soundItems = soundList.toArray(new CharSequence[0]);
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Select Sound");
+        builder.setItems(soundItems, (dialog, which) -> {
+            selectedSound = soundItems[which].toString();
+            soundTextView.setText(selectedSound);
+            playSound(selectedSound);
+        });
+        builder.show();
+    }
+
+    private void showRingtonePicker() {
+        Intent intent = new Intent(RingtoneManager.ACTION_RINGTONE_PICKER);
+        intent.putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALL);
+        startActivityForResult(intent, RINGTONE_PICKER_REQUEST_CODE);
+    }
+
+    private List<String> getSoundsFromAssets() {
+        List<String> sounds = new ArrayList<>();
+        try {
+            String[] soundFiles = getAssets().list("sounds");
+            if (soundFiles != null) {
+                for (String file : soundFiles) {
+                    sounds.add(file);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return sounds;
+    }
+
+    private void playSound(String soundIdentifier) {
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+        }
+        mediaPlayer = new MediaPlayer();
+        mediaPlayer.setOnCompletionListener(mp -> {
+            mp.release();
+            mediaPlayer = null;
+        });
+
+        try {
+            if (soundIdentifier.startsWith("content://")) {
+                Uri soundUri = Uri.parse(soundIdentifier);
+                mediaPlayer.setDataSource(this, soundUri);
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            } else {
+                AssetFileDescriptor afd = getAssets().openFd("sounds/" + soundIdentifier);
+                mediaPlayer.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                mediaPlayer.prepare();
+                mediaPlayer.start();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            if (mediaPlayer != null) {
+                mediaPlayer.release();
+                mediaPlayer = null;
+            }
+        }
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == 999 && resultCode == RESULT_OK) {
-            selectedSoundUri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
-            if (selectedSoundUri != null) {
-                Ringtone ringtone = RingtoneManager.getRingtone(this, selectedSoundUri);
+        if (requestCode == RINGTONE_PICKER_REQUEST_CODE && resultCode == RESULT_OK) {
+            Uri uri = data.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI);
+            if (uri != null) {
+                selectedSound = uri.toString();
+                Ringtone ringtone = RingtoneManager.getRingtone(this, uri);
                 String name = ringtone.getTitle(this);
-                if (name != null && name.toLowerCase().contains("unknown")) {
-                    name = selectedSoundUri.getLastPathSegment();
-                    if (name != null && name.contains(".")) {
-                        name = name.substring(0, name.lastIndexOf('.'));
-                    }
-                }
                 soundTextView.setText(name);
+                playSound(selectedSound);
             }
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            mediaPlayer = null;
         }
     }
 
@@ -83,16 +171,14 @@ public class AddEditAlertActivity extends AppCompatActivity {
                 keywordsEditText.setText(alert.keywords);
                 flashlightCheckBox.setChecked(alert.flashlight);
                 if (alert.sound != null && !alert.sound.isEmpty()) {
-                    selectedSoundUri = Uri.parse(alert.sound);
-                    Ringtone ringtone = RingtoneManager.getRingtone(this, selectedSoundUri);
-                    String name = ringtone.getTitle(this);
-                    if (name != null && name.toLowerCase().contains("unknown")) {
-                        name = selectedSoundUri.getLastPathSegment();
-                        if (name != null && name.contains(".")) {
-                            name = name.substring(0, name.lastIndexOf('.'));
-                        }
+                    selectedSound = alert.sound;
+                    if (selectedSound.startsWith("content://")) {
+                        Ringtone ringtone = RingtoneManager.getRingtone(this, Uri.parse(selectedSound));
+                        String name = ringtone.getTitle(this);
+                        soundTextView.setText(name);
+                    } else {
+                        soundTextView.setText(selectedSound);
                     }
-                    soundTextView.setText(name);
                 }
             });
         }).start();
@@ -102,15 +188,17 @@ public class AddEditAlertActivity extends AppCompatActivity {
         new Thread(() -> {
             if (alert == null) {
                 alert = new Alert();
+                alert.isActive = true;
             }
             alert.name = nameEditText.getText().toString();
             alert.keywords = keywordsEditText.getText().toString();
             alert.flashlight = flashlightCheckBox.isChecked();
-            if (selectedSoundUri != null) {
-                alert.sound = selectedSoundUri.toString();
+            if (selectedSound != null) {
+                alert.sound = selectedSound;
             }
 
             if (alert.id == 0) {
+                alert.order = db.alertDao().getAll().size();
                 db.alertDao().insert(alert);
             } else {
                 db.alertDao().update(alert);

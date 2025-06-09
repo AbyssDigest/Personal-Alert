@@ -10,7 +10,7 @@ import java.util.List;
 
 @Dao
 public interface AlertDao {
-    @Query("SELECT * FROM alerts")
+    @Query("SELECT * FROM alerts ORDER BY `order` ASC")
     List<Alert> getAll();
 
     @Query("SELECT * FROM alerts WHERE id = :id")

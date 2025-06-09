@@ -12,4 +12,6 @@ public class Alert {
     public String keywords;
     public boolean flashlight;
     public String sound;
+    public int order;
+    public boolean isActive;
 }

@@ -11,6 +11,7 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.View;
 import android.widget.TextView;
 
 import androidx.recyclerview.widget.ItemTouchHelper;
@@ -27,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusTextView;
 
     private TextView lastAlertTextView;
+    private TextView lastAlertTextTextView;
     private Handler handler = new Handler();
     private Runnable updateLastAlertRunnable;
 
@@ -41,6 +43,7 @@ public class MainActivity extends AppCompatActivity {
         statusTextView = findViewById(R.id.statusTextView);
         recyclerView = findViewById(R.id.recyclerView);
         lastAlertTextView = findViewById(R.id.lastAlertTextView);
+        lastAlertTextTextView = findViewById(R.id.lastAlertTextTextView);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         FloatingActionButton addButton = findViewById(R.id.addButton);
@@ -70,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
                 SharedPreferences prefs = getSharedPreferences("PersonalAlert", MODE_PRIVATE);
                 long lastAlertTime = prefs.getLong("last_alert_time", 0);
                 String lastAlertName = prefs.getString("last_alert_name", "");
+                String lastAlertText = prefs.getString("last_alert_text", "");
 
                 if (lastAlertTime > 0 && !lastAlertName.isEmpty()) {
                     long timeDifference = System.currentTimeMillis() - lastAlertTime;
@@ -77,11 +81,15 @@ public class MainActivity extends AppCompatActivity {
 
                     if (minutes < 10) {
                         lastAlertTextView.setText("Last Alert: " + lastAlertName + " (" + minutes + "m ago)");
+                        lastAlertTextTextView.setText(lastAlertText);
+                        lastAlertTextTextView.setVisibility(View.VISIBLE);
                     } else {
                         lastAlertTextView.setText("Last Alert: None");
+                        lastAlertTextTextView.setVisibility(View.GONE);
                     }
                 } else {
                     lastAlertTextView.setText("Last Alert: None");
+                    lastAlertTextTextView.setVisibility(View.GONE);
                 }
                 handler.postDelayed(this, 60000); // Update every minute
             }
@@ -123,6 +131,9 @@ public class MainActivity extends AppCompatActivity {
                 if (alertAdapter == null) {
                     alertAdapter = new AlertAdapter(alerts);
                     recyclerView.setAdapter(alertAdapter);
+                    ItemTouchHelper.Callback callback = new ReorderCallback(alertAdapter);
+                    ItemTouchHelper touchHelper = new ItemTouchHelper(callback);
+                    touchHelper.attachToRecyclerView(recyclerView);
                     ItemTouchHelper itemTouchHelper = new ItemTouchHelper(new SwipeToDeleteCallback(alertAdapter));
                     itemTouchHelper.attachToRecyclerView(recyclerView);
                 } else {

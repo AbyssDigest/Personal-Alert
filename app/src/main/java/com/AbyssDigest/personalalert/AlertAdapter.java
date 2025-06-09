@@ -1,5 +1,6 @@
 package com.AbyssDigest.personalalert;
 
+import android.content.Context;
 import android.content.Intent;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -8,6 +9,7 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import androidx.appcompat.widget.SwitchCompat;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -20,6 +22,7 @@ import java.util.List;
 public class AlertAdapter extends RecyclerView.Adapter<AlertAdapter.AlertViewHolder> {
 
     private List<Alert> alerts;
+    private Context context;
 
     public AlertAdapter(List<Alert> alerts) {
         this.alerts = alerts;
@@ -33,16 +36,39 @@ public class AlertAdapter extends RecyclerView.Adapter<AlertAdapter.AlertViewHol
 
     public void deleteItem(int position, View view) {
         Alert alertToDelete = alerts.get(position);
-        new Thread(() -> {
-            AppDatabase.getDatabase(view.getContext()).alertDao().delete(alertToDelete);
-        }).start();
         alerts.remove(position);
         notifyItemRemoved(position);
+
+        new Thread(() -> {
+            AppDatabase db = AppDatabase.getDatabase(view.getContext().getApplicationContext());
+            db.alertDao().delete(alertToDelete);
+            for (int i = 0; i < alerts.size(); i++) {
+                Alert alert = alerts.get(i);
+                alert.order = i;
+                db.alertDao().update(alert);
+            }
+        }).start();
+    }
+
+    public void onItemMove(int fromPosition, int toPosition) {
+        Alert movedAlert = alerts.remove(fromPosition);
+        alerts.add(toPosition, movedAlert);
+        notifyItemMoved(fromPosition, toPosition);
+
+        new Thread(() -> {
+            AppDatabase db = AppDatabase.getDatabase(context);
+            for (int i = 0; i < alerts.size(); i++) {
+                Alert alert = alerts.get(i);
+                alert.order = i;
+                db.alertDao().update(alert);
+            }
+        }).start();
     }
 
     @NonNull
     @Override
     public AlertViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        context = parent.getContext();
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.alert_item, parent, false);
         return new AlertViewHolder(view);
     }
@@ -66,6 +92,14 @@ public class AlertAdapter extends RecyclerView.Adapter<AlertAdapter.AlertViewHol
             holder.soundTextView.setText(name);
         }
 
+        holder.activeSwitch.setChecked(alert.isActive);
+        holder.activeSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            alert.isActive = isChecked;
+            new Thread(() -> {
+                AppDatabase.getDatabase(context).alertDao().update(alert);
+            }).start();
+        });
+
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(v.getContext(), AddEditAlertActivity.class);
             intent.putExtra("alert_id", alert.id);
@@ -84,12 +118,14 @@ public class AlertAdapter extends RecyclerView.Adapter<AlertAdapter.AlertViewHol
         TextView nameTextView;
         TextView keywordsTextView;
         TextView soundTextView;
+        SwitchCompat activeSwitch;
 
         public AlertViewHolder(@NonNull View itemView) {
             super(itemView);
             nameTextView = itemView.findViewById(R.id.nameTextView);
             keywordsTextView = itemView.findViewById(R.id.keywordsTextView);
             soundTextView = itemView.findViewById(R.id.soundTextView);
+            activeSwitch = itemView.findViewById(R.id.activeSwitch);
         }
     }
 }

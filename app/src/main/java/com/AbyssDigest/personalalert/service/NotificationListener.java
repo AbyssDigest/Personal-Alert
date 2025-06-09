@@ -15,6 +15,7 @@ public class NotificationListener extends NotificationListenerService {
 
     private AppDatabase db;
     private AlertManager alertManager;
+    private boolean is_find;
 
     @Override
     public void onCreate() {
@@ -36,20 +37,28 @@ public class NotificationListener extends NotificationListenerService {
 //            Log.d("AlertAdapter", "title: " + title );
 //            Log.d("AlertAdapter", "text: " + text );
 
+            is_find = false;
+
             if (text != null) {
                 String lowerCaseText = text.toLowerCase();
                 for (Alert alert : alerts) {
-                    String[] keywords = alert.keywords.toLowerCase().split(",");
-                    for (String keyword : keywords) {
-                        if (lowerCaseText.contains(keyword.trim())) {
-                            alertManager.triggerAlert(alert.sound, alert.flashlight);
-                            SharedPreferences prefs = getSharedPreferences("PersonalAlert", MODE_PRIVATE);
-                            SharedPreferences.Editor editor = prefs.edit();
-                            editor.putString("last_alert_name", alert.name);
-                            editor.putLong("last_alert_time", System.currentTimeMillis());
-                            editor.apply();
-                            break;
+                    if (alert.isActive) {
+                        String[] keywords = alert.keywords.toLowerCase().split(",");
+                        for (String keyword : keywords) {
+                            if (lowerCaseText.contains(keyword.trim())) {
+                                alertManager.triggerAlert(alert.sound, alert.flashlight);
+                                SharedPreferences prefs = getSharedPreferences("PersonalAlert", MODE_PRIVATE);
+                                SharedPreferences.Editor editor = prefs.edit();
+                                editor.putString("last_alert_name", alert.name);
+                                editor.putString("last_alert_text", text);
+                                editor.putLong("last_alert_time", System.currentTimeMillis());
+                                editor.apply();
+                                is_find = true;
+                                break;
+                            }
+
                         }
+                        if ( is_find ) { break;}
                     }
                 }
             }
